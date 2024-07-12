@@ -69,7 +69,7 @@ struct SynthEfinixPass : public ScriptPass
 		log("\n");
 	}
 
-	string top_opt, edif_file, json_file;
+	string top_opt, edif_file, json_file, blif_file;
 	bool flatten, retime, nobram;
 
 	void clear_flags() override
@@ -77,6 +77,7 @@ struct SynthEfinixPass : public ScriptPass
 		top_opt = "-auto-top";
 		edif_file = "";
 		json_file = "";
+    blif_file = "";
 		flatten = true;
 		retime = false;
 		nobram = false;
@@ -100,6 +101,10 @@ struct SynthEfinixPass : public ScriptPass
 			}
 			if (args[argidx] == "-json" && argidx+1 < args.size()) {
 				json_file = args[++argidx];
+				continue;
+			}
+			if (args[argidx] == "-blif" && argidx+1 < args.size()) {
+				blif_file = args[++argidx];
 				continue;
 			}
 			if (args[argidx] == "-run" && argidx+1 < args.size()) {
@@ -232,6 +237,12 @@ struct SynthEfinixPass : public ScriptPass
 		{
 			if (!json_file.empty() || help_mode)
 				run(stringf("write_json %s", help_mode ? "<file-name>" : json_file.c_str()));
+		}
+
+		if (check_label("blif"))
+		{
+			if (!blif_file.empty() || help_mode)
+				run(stringf("write_blif %s", help_mode ? "<file-name>" : blif_file.c_str()));
 		}
 	}
 } SynthEfinixPass;
