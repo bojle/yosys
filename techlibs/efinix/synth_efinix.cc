@@ -69,7 +69,7 @@ struct SynthEfinixPass : public ScriptPass
 		log("\n");
 	}
 
-	string top_opt, edif_file, json_file, blif_file;
+	string top_opt, edif_file, json_file, blif_file, sverilog_file;
 	bool flatten, retime, nobram;
 
 	void clear_flags() override
@@ -78,6 +78,7 @@ struct SynthEfinixPass : public ScriptPass
 		edif_file = "";
 		json_file = "";
     blif_file = "";
+    sverilog_file = "";
 		flatten = true;
 		retime = false;
 		nobram = false;
@@ -105,6 +106,10 @@ struct SynthEfinixPass : public ScriptPass
 			}
 			if (args[argidx] == "-blif" && argidx+1 < args.size()) {
 				blif_file = args[++argidx];
+				continue;
+			}
+			if (args[argidx] == "-sverilog" && argidx+1 < args.size()) {
+				sverilog_file = args[++argidx];
 				continue;
 			}
 			if (args[argidx] == "-run" && argidx+1 < args.size()) {
@@ -156,6 +161,7 @@ struct SynthEfinixPass : public ScriptPass
 			run("flatten");
 			run("tribuf -logic");
 			run("deminout");
+			run("techmap -map +/efinix/mul_map.v");
 		}
 
 		if (check_label("coarse"))
@@ -243,6 +249,12 @@ struct SynthEfinixPass : public ScriptPass
 		{
 			if (!blif_file.empty() || help_mode)
 				run(stringf("write_blif %s", help_mode ? "<file-name>" : blif_file.c_str()));
+		}
+
+		if (check_label("sverilog"))
+		{
+			if (!sverilog_file.empty() || help_mode)
+				run(stringf("write_verilog %s", help_mode ? "<file-name>" : sverilog_file.c_str()));
 		}
 	}
 } SynthEfinixPass;
