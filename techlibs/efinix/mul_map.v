@@ -1,4 +1,4 @@
-(* techmap_celltype = "$mul $__mul" *)
+(* techmap_celltype = "$__efx_mult" *)
 module \$mul (Y, A, B);
   parameter A_SIGNED = 1;
   parameter A_WIDTH = 18;
@@ -8,11 +8,11 @@ module \$mul (Y, A, B);
 
   localparam EFX_MULT_WIDTH = 18;
 
-  input  signed [A_WIDTH-1:0] A;
+  input signed [A_WIDTH-1:0] A;
   input signed [B_WIDTH-1:0] B;
   output signed [Y_WIDTH-1:0] Y;
 
-  wire _TECHMAP_FAIL_ = A_WIDTH > 18 || B_WIDTH > 18 || 
+  wire _TECHMAP_FAIL_ = Y_WIDTH > (EFX_MULT_WIDTH * 2) || A_WIDTH > 18 || B_WIDTH > 18 || 
                         (A_WIDTH != B_WIDTH) || (A_SIGNED != B_SIGNED);
 
   localparam A_PAD_WIDTH = EFX_MULT_WIDTH - A_WIDTH;

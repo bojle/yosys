@@ -157,6 +157,7 @@ struct SynthEfinixPass : public ScriptPass
 
 		if (flatten && check_label("flatten", "(unless -noflatten)"))
 		{
+      run("efx_mult_bypass");
 			run("proc");
 			run("flatten");
 			run("tribuf -logic");
