@@ -95,9 +95,8 @@ std::map<uchar, uchar> gbl_map{
 
 using SSMap = std::map<std::string, std::string>;
 
-std::map<std::string, SSMap> prim_info_map {
-  {"EFX_LUT4", SSMap{{"cellname", "EFX_LUT4"}}}
-};
+std::map<std::string, SSMap> prim_info_map{
+    {"EFX_LUT4", SSMap{{"cellname", "EFX_LUT4"}}}};
 
 uchar maplu(uchar key) {
   auto itr = gbl_map.find(key);
@@ -108,6 +107,10 @@ uchar maplu(uchar key) {
   return 0;
 }
 
+/* inputs: string "hello"
+ * output: 0x05, 'o', 'l', 'l', 'e', 'h'
+ * 0x05 here is strlen("hello")
+ */
 std::vector<uchar> map_encode(std::string s) {
   std::string ss = RTLIL::unescape_id(s);
   std::vector<uchar> ret;
@@ -129,7 +132,6 @@ template <typename T> void revld(std::ostream &f, const std::vector<T> &v) {
   }
 }
 
-
 std::vector<uchar> zeros(int x) {
   assert(x >= 0);
   std::vector<uchar> ret(x, 0);
@@ -142,9 +144,7 @@ template <typename T> void ld(std::ostream &f, const std::vector<T> &v) {
   }
 }
 
-void ld(std::ostream &f, uchar v) {
-  f << v;
-}
+void ld(std::ostream &f, uchar v) { f << v; }
 
 void revld(std::ostream &f, u16 v) {
   uchar byte0 = v & 0x00ff;
@@ -154,7 +154,6 @@ void revld(std::ostream &f, u16 v) {
   ld(f, byte0);
   ld(f, byte1);
 }
-
 
 struct VdbBackend : public Backend {
   VdbBackend() : Backend("vdb", "write design to vdb netlist file") {}
@@ -235,7 +234,8 @@ struct VdbBackend : public Backend {
         ld(*f, sz);
         ld(*f, 0x00);
         for (auto itr : cc->connections()) {
-          log("\t\tconnection ports %s type %d\n", log_id(itr.first), cc->input(itr.first));
+          log("\t\tconnection ports %s type %d\n", log_id(itr.first),
+              cc->input(itr.first));
           ld(*f, map_encode(itr.first));
           ld(*f, zeros(10));
           std::vector<uchar> ze(10, 0);
@@ -246,7 +246,8 @@ struct VdbBackend : public Backend {
             ze[0] = 0x02;
             ld(*f, ze);
           } else {
-            log_error("cant handle cell %s being neither input nor output\n", log_id(itr.first));
+            log_error("cant handle cell %s being neither input nor output\n",
+                      log_id(itr.first));
           }
         }
       }
@@ -268,26 +269,80 @@ struct VdbBackend : public Backend {
         ze[0] = 0x02;
         ld(*f, ze);
       } else {
-        log_error("cant handle cell %s being neither input nor output\n", log_id(top_module_name));
+        log_error("cant handle cell %s being neither input nor output\n",
+                  log_id(top_module_name));
       }
-
     }
   }
 
-  void emit_primary_inputs(std::ostream *&f, RTLIL::Design *design, IdString top_module_name) {
+  /* Primary inputs and outputs have the following syntax
+   *
+   *  xx xx (little endian, input port count + output port count of top module)
+   *    sz name_of_a_port
+   *    #8 00
+   *    01 sz EFX_ATTRIBUTE_PORT__IS_PRIMARY_INPUT sz TRUE  (in little endian)
+   *    00
+   *    01/02 (based on input/output respectively)
+   *    xx xx (little endian, the number assigned to this port in wire_map)
+   *    10 #6 00
+   *
+   *    sz name_of_a_port2
+   *    #8 00
+   *    01 sz EFX_ATTRIBUTE_PORT__IS_PRIMARY_INPUT sz TRUE  (in little endian)
+   *    00
+   *    01/02 (based on input/output respectively)
+   *    xx xx (little endian, the number assigned to this port in wire_map)
+   *    10 #6 00
+   */
+  void emit_primary_io_aux(std::ostream *&f,
+                           std::map<RTLIL::IdString, u16> &wire_map,
+                           IdString port_name, uchar i_or_o) {
+    ld(*f, map_encode(port_name));
+    ld(*f, zeros(8));
+    ld(*f, 0x01);
+    if (i_or_o == 0x01) {
+      ld(*f, map_encode(std::string("EFX_ATTRIBUTE_PORT__IS_PRIMARY_INPUT")));
+    } else if (i_or_o == 0x02) {
+      ld(*f, map_encode(std::string("EFX_ATTRIBUTE_PORT__IS_PRIMARY_OUTPUT")));
+    } else {
+      log_error("unknown i_or_o value %d\n", i_or_o);
+    }
+    ld(*f, map_encode(std::string("TRUE")));
+    ld(*f, 0x00);
+    ld(*f, i_or_o); // whether this is an input or output port
+    auto itr = wire_map.find(port_name);
+    if (itr == wire_map.end()) {
+      log_error("couldnt find %s in wire_map. see if "
+                "this port is being included by init_wire_map()",
+                log_id(port_name));
+    }
+    ld(*f, itr->second);
+    ld(*f, 0x10);
+    ld(*f, zeros(6));
+  }
+
+  void emit_primary_io(std::ostream *&f,
+                       std::map<RTLIL::IdString, u16> &wire_map,
+                       RTLIL::Design *design, IdString top_module_name) {
     RTLIL::Module *mod = design->module(top_module_name);
+    u16 cnt = mod->wires().size();
+    ld(*f, cnt);
     for (auto name : mod->ports) {
       if (mod->wire(name)->port_input) {
         log("primary input port %s\n", log_id(name));
+        emit_primary_io_aux(f, wire_map, name, 0x01);
       } else if (mod->wire(name)->port_output) {
         log("primary output port %s\n", log_id(name));
+        emit_primary_io_aux(f, wire_map, name, 0x02);
       } else {
-        log_error("cant handle cell %s being neither input nor output\n", log_id(name));
+        log_error("cant handle cell %s being neither input nor output\n",
+                  log_id(name));
       }
     }
   }
 
-  void init_wire_map(std::map<RTLIL::IdString, u16> &wmap, RTLIL::Design *design) {
+  void init_wire_map(std::map<RTLIL::IdString, u16> &wmap,
+                     RTLIL::Design *design) {
     u16 cnt = 0x00;
     for (auto module : design->modules()) {
       for (auto ww : module->wires()) {
@@ -320,7 +375,7 @@ struct VdbBackend : public Backend {
     ld(*f, std::vector<uchar>{0x02, 0x00});
     emit_module_info(f, design);
     emit_module_port_info(f, design, IdString(top_module_name));
-    emit_primary_inputs(f, design, IdString(top_module_name));
+    emit_primary_io(f, wire_map, design, IdString(top_module_name));
   }
 } VdbBackend;
 
