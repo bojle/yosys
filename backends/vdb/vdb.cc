@@ -26,6 +26,8 @@
 #include <cstddef>
 #include <string>
 #include <vector>
+#include <random>
+#include <algorithm>
 
 /*
 
@@ -75,7 +77,7 @@ std::map<uchar, uchar> gbl_map{
     {'q', 0x61}, {'p', 0x62}, {'n', 0x4f}, {'m', 0x4d}, {'l', 0x4e},
     {'k', 0x4c}, {'j', 0x47}, {'i', 0x45}, {'h', 0x46}, {'g', 0x44},
     {'f', 0x4b}, {'e', 0x49}, {'.', 0x8f}, {'/', 0xa0}, {'Z', 0xb7},
-    {'W', 0xb4}, {'V', 0xbb}, {'F', 0x9b},
+    {'W', 0xb4}, {'V', 0xbb}, {'F', 0x9b}, 
 
     // -- shplit  --
 
@@ -89,8 +91,34 @@ std::map<uchar, uchar> gbl_map{
     {'J', 0x16}, {'Z', 0x36}, {'d', 0x83}, {'K', 0x15}, {'Q', 0x30},
     {'c', 0x81}, {'e', 0x88}, {'g', 0x89}, {'i', 0x84}, {'k', 0x85},
     {'v', 0xaa}, {'n', 0x8e}, {'6', 0x2a}, {'~', 0xae}, {'f', 0x8a},
-    {'$', 0x03},
+    {'$', 0x03}, {'9', 0x24},
 };
+
+/* maps 62 alphanumeric characters (0-9,a-b,A-B) to
+ * their respective ascii
+ *
+ * key: uchar (0-61)
+ */
+std::map<uchar, uchar> alnum_map{
+    {0, '0'},  {1, '1'},  {2, '2'},  {3, '3'},  {4, '4'},  {5, '5'},  {6, '6'},
+    {7, '7'},  {8, '8'},  {9, '9'},  {10, 'A'}, {11, 'B'}, {12, 'C'}, {13, 'D'},
+    {14, 'E'}, {15, 'F'}, {16, 'G'}, {17, 'H'}, {18, 'I'}, {19, 'J'}, {20, 'K'},
+    {21, 'L'}, {22, 'M'}, {23, 'N'}, {24, 'O'}, {25, 'P'}, {26, 'Q'}, {27, 'R'},
+    {28, 'S'}, {29, 'T'}, {30, 'U'}, {31, 'V'}, {32, 'W'}, {33, 'X'}, {34, 'Y'},
+    {35, 'Z'}, {36, 'a'}, {37, 'b'}, {38, 'c'}, {39, 'd'}, {40, 'e'}, {41, 'f'},
+    {42, 'g'}, {43, 'h'}, {44, 'i'}, {45, 'j'}, {46, 'k'}, {47, 'l'}, {48, 'm'},
+    {49, 'n'}, {50, 'o'}, {51, 'p'}, {52, 'q'}, {53, 'r'}, {54, 's'}, {55, 't'},
+    {56, 'u'}, {57, 'v'}, {58, 'w'}, {59, 'x'}, {60, 'y'}, {61, 'z'}
+};
+
+uchar alnum_maplu(uchar key) {
+  auto itr = alnum_map.find(key);
+  if (itr != alnum_map.end()) {
+    return itr->second;
+  }
+  log_error("fix this bruh, go look for an encoding for key: %c\n", key);
+  return 0;
+}
 
 
 using SSMap = std::map<std::string, std::string>;
@@ -105,6 +133,16 @@ uchar maplu(uchar key) {
   }
   log_error("fix this bruh, go look for an encoding for key: %c\n", key);
   return 0;
+}
+
+/* lookup with 'val' instead of key */
+uchar maplu_value(uchar val) {
+  for (const auto &[k, v] : gbl_map) {
+    if (v == val) {
+      return k;
+    }
+  }
+  log_error("couldnt find a map for value %c\n", val);
 }
 
 /* inputs: string "hello"
@@ -135,6 +173,29 @@ template <typename T> void revld(std::ostream &f, const std::vector<T> &v) {
 std::vector<uchar> zeros(int x) {
   assert(x >= 0);
   std::vector<uchar> ret(x, 0);
+  return ret;
+}
+
+/* return: 8 bytes, randomly initialized, to be
+ * used as a file id
+ */
+#define FILE_ID_LEN 8
+#define TABLE_SIZE 62
+std::vector<uchar> get_file_id() {
+  std::random_device rd;
+  std::mt19937 me{rd()};
+  std::uniform_int_distribution<int> dist{0, TABLE_SIZE-1};
+  std::vector<uchar> ret(FILE_ID_LEN, 0);
+  auto gen = [&dist, &me]() { return dist(me); };
+  std::generate(ret.begin(), ret.end(), gen);
+  auto map = [](uchar &i) {
+    uchar alnum = alnum_maplu(i);
+    i = maplu(alnum);
+  };
+  std::for_each(ret.begin(), ret.end(), map);
+
+  std::for_each(ret.begin(), ret.end(), [](uchar i) { log("%c", maplu_value(i)); });
+  log("\n");
   return ret;
 }
 
@@ -357,6 +418,7 @@ struct VdbBackend : public Backend {
                std::vector<std::string> args, RTLIL::Design *design) override {
     std::string top_module_name;
 
+    /* TODO: add flags (-v) */
     size_t argidx = 1;
     extra_args(f, filename, args, argidx);
 
@@ -376,6 +438,13 @@ struct VdbBackend : public Backend {
     emit_module_info(f, design);
     emit_module_port_info(f, design, IdString(top_module_name));
     emit_primary_io(f, wire_map, design, IdString(top_module_name));
+
+    auto v = get_file_id();
+    log("file id: ");
+    for (auto i : v) {
+      log("%d", i);
+    }
+    log("\n");
   }
 } VdbBackend;
 
